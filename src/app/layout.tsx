@@ -9,7 +9,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Dispatch — Autonomous Newsdesk",
+  title: "Dispatch: Autonomous Newsdesk",
   description:
     "A multi-agent crew that finds the day's stories, edits them into a briefing, and files it to Slack and Google Sheets every six hours.",
 };

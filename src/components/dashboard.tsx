@@ -174,7 +174,7 @@ export function Dashboard() {
             />
             <Stat
               label="Last run"
-              value={lastRun ? `${(lastRun.durationMs / 1000).toFixed(1)}s` : "—"}
+              value={lastRun ? `${(lastRun.durationMs / 1000).toFixed(1)}s` : "n/a"}
               hint={lastRun ? `${lastRun.fetched} articles scanned` : "no run on this instance"}
             />
             <Stat
