@@ -1,0 +1,39 @@
+gather:
+  description: >
+    Use the News Fetcher Tool to pull the latest articles for these topics:
+    {topics}. Ask for {per_topic} articles per topic.
+    Discard anything that is not a news story, is older than roughly a day, or
+    is missing a working source link. Keep the JSON structure exactly as the
+    tool returned it.
+  expected_output: >
+    A JSON array of article objects, each with id, headline, url, source,
+    published_at, snippet and topic. No commentary around the JSON.
+  agent: scout
+
+edit:
+  description: >
+    Take the article array from the previous task and run it through the
+    Intelligent Summarizer Tool. Review what comes back: if two entries cover
+    the same event, keep only the stronger one. Order the final list so that
+    high impact stories come first. Cap the briefing at {max_articles} entries.
+  expected_output: >
+    A JSON array of at most {max_articles} objects, each carrying the original
+    id, headline, url, source and topic plus summary, category and impact.
+    High impact entries first. No commentary around the JSON.
+  agent: editor
+  context:
+    - gather
+
+distribute:
+  description: >
+    Publish the edited briefing. First call the Slack Bot Tool with the JSON
+    array. Then call the Sheets Logger Tool with the same array and run id
+    "{run_id}". Report precisely what each tool returned, including failures.
+    Do not retry a channel that reports itself as unconfigured.
+  expected_output: >
+    A short plain-text report naming the number of stories published, whether
+    Slack delivery succeeded, and how many rows reached Google Sheets. Mention
+    any channel that was skipped and why.
+  agent: distributor
+  context:
+    - edit

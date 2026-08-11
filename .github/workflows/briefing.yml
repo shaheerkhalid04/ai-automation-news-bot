@@ -1,0 +1,47 @@
+name: Newsroom briefing
+
+# The CrewAI crew is too heavy for a serverless function, so the agent run
+# lives here. Vercel handles the six-hourly edge run; this workflow is the
+# full three-agent pass.
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Which runner to use"
+        required: true
+        default: crew
+        type: choice
+        options: [crew, direct]
+
+jobs:
+  brief:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: File the briefing
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          GOOGLE_SHEETS_ID: ${{ secrets.GOOGLE_SHEETS_ID }}
+          GOOGLE_SERVICE_ACCOUNT_EMAIL: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_EMAIL }}
+          GOOGLE_PRIVATE_KEY: ${{ secrets.GOOGLE_PRIVATE_KEY }}
+          NEWS_TOPICS: ${{ vars.NEWS_TOPICS }}
+        run: |
+          if [ "${{ inputs.mode }}" = "direct" ]; then
+            python -m crew.main --direct
+          else
+            python -m crew.main
+          fi
