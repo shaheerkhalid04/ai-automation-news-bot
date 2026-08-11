@@ -4,7 +4,7 @@ An autonomous newsdesk. A multi-agent crew finds the day's stories, edits them
 into a briefing, posts it to Slack and files it to Google Sheets, every six
 hours, without anyone pressing anything.
 
-Live dashboard: _added after deploy_
+Live dashboard: **https://dispatch-newsdesk.vercel.app**
 
 ---
 
