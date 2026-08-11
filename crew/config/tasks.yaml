@@ -1,35 +1,39 @@
 gather:
   description: >
-    Use the News Fetcher Tool to pull the latest articles for these topics:
-    {topics}. Ask for {per_topic} articles per topic.
+    Use the News Fetcher Tool once, passing every beat as a single
+    comma-separated string: {topics}
     Discard anything that is not a news story, is older than roughly a day, or
     is missing a working source link. Keep the JSON structure exactly as the
     tool returned it.
   expected_output: >
-    A JSON array of article objects, each with id, headline, url, source,
-    published_at, snippet and topic. No commentary around the JSON.
+    A short plain-text note saying how many articles were fetched and which
+    beats they covered. The articles themselves are held by the tool.
   agent: scout
 
 edit:
   description: >
-    Take the article array from the previous task and run it through the
-    Intelligent Summarizer Tool. Review what comes back: if two entries cover
-    the same event, keep only the stronger one. Order the final list so that
-    high impact stories come first. Cap the briefing at {max_articles} entries.
+    Call the Intelligent Summarizer Tool exactly once, with max_stories set to
+    the string "{max_articles}". It reads the articles the scout collected,
+    writes each summary, drops duplicates and ranks high impact first. Read the
+    receipt it returns and judge whether the briefing looks sound.
+    Every tool argument must be given as a plain string.
   expected_output: >
-    A JSON array of at most {max_articles} objects, each carrying the original
-    id, headline, url, source and topic plus summary, category and impact.
-    High impact entries first. No commentary around the JSON.
+    A short plain-text note saying how many stories made the briefing and how
+    many were dropped. The briefing itself is held by the tool.
   agent: editor
   context:
     - gather
 
 distribute:
   description: >
-    Publish the edited briefing. First call the Slack Bot Tool with the JSON
-    array. Then call the Sheets Logger Tool with the same array and run id
-    "{run_id}". Report precisely what each tool returned, including failures.
-    Do not retry a channel that reports itself as unconfigured.
+    Publish the edited briefing. First call the Slack Bot Tool with intro set
+    to a short one-line note about today's briefing, or to "" if none fits.
+    Then call the Sheets Logger Tool with run_id set to the string "{run_id}".
+    Both read the briefing the editor produced, so neither needs the stories
+    passed to it. Every tool argument must be given as a plain string, and each
+    tool is called exactly once. Report precisely what each tool returned,
+    including failures, and do not retry a channel that reports itself as
+    unconfigured.
   expected_output: >
     A short plain-text report naming the number of stories published, whether
     Slack delivery succeeded, and how many rows reached Google Sheets. Mention

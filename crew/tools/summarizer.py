@@ -17,6 +17,7 @@ from typing import Any
 
 from crewai.tools import tool
 
+from crew import state
 from crew.settings import settings
 
 _ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
@@ -100,6 +101,9 @@ def _call_batch(articles: list[dict[str, Any]], attempt: int = 0) -> list[dict[s
         headers={
             "Authorization": f"Bearer {settings.groq_api_key}",
             "Content-Type": "application/json",
+            # Without an explicit agent, urllib sends "Python-urllib/3.x" and
+            # the edge in front of the API answers 403 before Groq sees it.
+            "User-Agent": "Dispatch/1.0 (+newsdesk automation)",
         },
     )
 
@@ -174,16 +178,41 @@ def summarise(articles: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 @tool("Intelligent Summarizer Tool")
-def summarizer_tool(articles_json: str) -> str:
-    """Summarise a JSON array of articles from the News Fetcher Tool.
+def summarizer_tool(max_stories: str) -> str:
+    """Summarise the articles the News Fetcher Tool just collected.
 
-    Adds a 20-40 word summary, a category and an impact rating to every
-    article, removing duplicates. Returns the enriched JSON array.
+    Reads what the fetcher held, writes a 20-40 word summary plus a category
+    and impact rating for each, drops duplicates, and ranks high impact first.
+    The result is held for the publishing tools.
+
+    max_stories caps the briefing and is required: pass it as a plain string
+    such as "12", or "" to use the configured default. Returns a short receipt.
     """
+    articles = state.get_articles()
+    if not articles:
+        return "Nothing to summarise. Run the News Fetcher Tool first."
+
+    # Accept whatever shape the model produced: "12", " 12 ", or nothing.
     try:
-        articles = json.loads(articles_json)
-    except json.JSONDecodeError as exc:
-        return json.dumps({"error": f"Expected a JSON array of articles: {exc}"})
-    if not isinstance(articles, list):
-        return json.dumps({"error": "Expected a JSON array of articles."})
-    return json.dumps(summarise(articles), indent=2)
+        cap = int(str(max_stories).strip())
+    except (TypeError, ValueError):
+        cap = settings.max_articles
+    if cap < 1:
+        cap = settings.max_articles
+
+    stories = summarise(articles)
+
+    order = {"high": 0, "medium": 1, "low": 2}
+    stories.sort(key=lambda story: order.get(story.get("impact", "medium"), 1))
+    stories = stories[:cap]
+    state.set_stories(stories)
+
+    dropped = len(articles) - len(stories)
+    listing = "\n".join(
+        f"{index}. [{story['impact']}/{story['category']}] {story['headline']}\n   {story['summary']}"
+        for index, story in enumerate(stories, start=1)
+    )
+    return (
+        f"Edited {len(articles)} articles down to {len(stories)} "
+        f"({dropped} dropped as duplicates or over the cap), held for publishing.\n{listing}"
+    )

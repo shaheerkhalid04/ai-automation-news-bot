@@ -15,9 +15,19 @@ from crew.tools import (
 
 
 def build_llm() -> LLM:
-    """Groq through LiteLLM. Low temperature keeps the desk factual."""
+    """Groq through CrewAI's native OpenAI provider.
+
+    Groq is not one of CrewAI's native providers, so a "groq/" model string
+    falls through to LiteLLM. That path does not strip the cache_breakpoint
+    marker CrewAI attaches to system messages, and Groq rejects the request
+    outright with an invalid_request_error. Groq's OpenAI-compatible endpoint
+    takes the native provider instead, which strips the marker correctly.
+
+    Low temperature keeps the desk factual.
+    """
     return LLM(
-        model=f"groq/{settings.groq_model}",
+        model=f"openai/{settings.crew_agent_model}",
+        base_url="https://api.groq.com/openai/v1",
         api_key=settings.groq_api_key,
         temperature=0.2,
     )

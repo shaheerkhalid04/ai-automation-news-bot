@@ -16,6 +16,7 @@ from typing import Any
 
 from crewai.tools import tool
 
+from crew import state
 from crew.settings import settings
 
 _SCOPE = "https://www.googleapis.com/auth/spreadsheets"
@@ -47,7 +48,11 @@ def _call(method: str, path: str, token: str, payload: dict | None = None) -> di
     request = urllib.request.Request(
         f"{_BASE}/{settings.sheets_id}{path}",
         data=json.dumps(payload).encode() if payload is not None else None,
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "User-Agent": "Dispatch/1.0 (+newsdesk automation)",
+        },
         method=method,
     )
     with urllib.request.urlopen(request, timeout=_TIMEOUT) as response:
@@ -145,14 +150,19 @@ def fingerprint(headline: str) -> str:
 
 
 @tool("Sheets Logger Tool")
-def sheets_logger_tool(items_json: str, run_id: str = "") -> str:
-    """Append the summarised digest to Google Sheets for record keeping.
+def sheets_logger_tool(run_id: str) -> str:
+    """Append the edited briefing to Google Sheets for record keeping.
 
-    Writes one row per story with date, topic, category, impact, headline,
-    summary, source and source URL.
+    Logs whatever the Intelligent Summarizer Tool produced, one row per story
+    with date, topic, category, impact, headline, summary, source and URL.
+    run_id is required: pass the run id you were given as a plain string.
+    Returns how many rows landed, and why if none did.
     """
-    try:
-        items = json.loads(items_json)
-    except json.JSONDecodeError as exc:
-        return json.dumps({"logged": 0, "reason": f"invalid JSON: {exc}"})
-    return json.dumps(log_rows(items if isinstance(items, list) else [], run_id))
+    stories = state.get_stories()
+    if not stories:
+        return "Nothing to log. Run the Intelligent Summarizer Tool first."
+
+    result = log_rows(stories, run_id)
+    if result.get("logged"):
+        return f"Appended {result['logged']} rows to the '{result['tab']}' tab."
+    return f"Nothing reached Google Sheets: {result.get('reason', 'unknown')}."

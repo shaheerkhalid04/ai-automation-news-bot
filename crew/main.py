@@ -14,6 +14,7 @@ import sys
 import uuid
 from datetime import datetime, timezone
 
+from crew import state
 from crew.settings import settings
 from crew.tools import (
     fetch_news,
@@ -72,7 +73,7 @@ def run_direct(per_topic: int = 6) -> dict:
     }
 
 
-def run_crew(per_topic: int = 6) -> str:
+def run_crew(per_topic: int = 3) -> str:
     """Full CrewAI orchestration with the three agents."""
     from crew.newsroom import NewsroomCrew
 
@@ -82,10 +83,11 @@ def run_crew(per_topic: int = 6) -> str:
             "Use --direct to run the tools without the LLM layer."
         )
 
+    state.reset()
+
     result = NewsroomCrew().crew().kickoff(
         inputs={
             "topics": ", ".join(settings.topics),
-            "per_topic": per_topic,
             "max_articles": settings.max_articles,
             "run_id": _run_id(),
         }
@@ -100,7 +102,14 @@ def main() -> int:
         action="store_true",
         help="Skip agent orchestration and run the tools in a fixed order.",
     )
-    parser.add_argument("--per-topic", type=int, default=6, help="Articles per topic.")
+    # The crew keeps every intermediate payload in the LLM context, so it runs
+    # a tighter fetch than the direct path to stay inside the free-tier budget.
+    parser.add_argument(
+        "--per-topic",
+        type=int,
+        default=0,
+        help="Articles per topic. Defaults to 3 for the crew, 6 with --direct.",
+    )
     parser.add_argument("--json", action="store_true", help="Print the result as JSON.")
     args = parser.parse_args()
 
@@ -113,14 +122,14 @@ def main() -> int:
     )
 
     if args.direct:
-        result = run_direct(per_topic=args.per_topic)
+        result = run_direct(per_topic=args.per_topic or 6)
         if args.json:
             print(json.dumps(result, indent=2))
         else:
             print(f"\n[dispatch] run {result['run_id']} published {result['published']} stories")
         return 0
 
-    print(run_crew(per_topic=args.per_topic))
+    print(run_crew(per_topic=args.per_topic or 3))
     return 0
 
 

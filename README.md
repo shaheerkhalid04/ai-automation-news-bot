@@ -68,6 +68,8 @@ rather than raising, so a half-configured deployment still produces a briefing.
 | Variable | Needed for | Notes |
 |---|---|---|
 | `GROQ_API_KEY` | Real summaries | Without it the desk falls back to raw snippets |
+| `GROQ_MODEL` | Summarising | Defaults to `llama-3.3-70b-versatile` |
+| `CREW_AGENT_MODEL` | Agent reasoning | Defaults to `llama-3.1-8b-instant`, see below |
 | `SERPER_API_KEY` | Richer search | Optional. Empty means the keyless Google News RSS backend |
 | `SLACK_WEBHOOK_URL` | Slack delivery | Or `SLACK_BOT_TOKEN` + `SLACK_CHANNEL` |
 | `GOOGLE_SHEETS_ID` | Archiving | The id from the spreadsheet URL |
@@ -76,6 +78,28 @@ rather than raising, so a half-configured deployment still produces a briefing.
 | `NEWS_TOPICS` | Beats | Comma separated. Defaults to AI, tech, finance, crypto |
 | `MAX_ARTICLES` | Briefing size | Defaults to 12 |
 | `CRON_SECRET` | Locking `/api/cron` | When set, the endpoint requires it |
+
+## Living inside the Groq free tier
+
+The free tier allows 12,000 tokens per minute and 100,000 per day, per model.
+Three design decisions fall out of that, and they are the reason the crew runs
+at all rather than dying on a 429:
+
+- **The agents and the summariser use different models.** Orchestration chatter
+  on `llama-3.1-8b-instant` leaves the whole daily allowance of the larger model
+  for the briefing itself.
+- **Articles never travel through the agents.** Tools hand data to each other
+  through a shared run buffer (`crew/state.py`) and return a short receipt, so
+  a twelve-story briefing costs a few hundred context tokens instead of tens of
+  thousands. Passing the payloads as tool arguments hit a hard 413.
+- **`max_tokens` is sized to the batch.** Groq counts it as *requested* tokens
+  against the per-minute allowance, so an oversized ceiling gets a short reply
+  rejected outright.
+
+Every tool argument is a plain string for the same family of reasons: strict
+tool-schema validation rejects a number sent as `"3"`, an array sent where a
+string was declared, and a zero-argument tool whose schema has `required` with
+no `properties`.
 
 ## Endpoints
 

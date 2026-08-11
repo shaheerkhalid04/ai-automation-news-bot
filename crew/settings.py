@@ -13,7 +13,11 @@ from dataclasses import dataclass, field
 try:  # local development convenience; absent in production images
     from dotenv import load_dotenv
 
-    load_dotenv()
+    # The web app writes .env.local by Next.js convention, so read that first
+    # and let both runners share one file. Values already in the real
+    # environment always win, which is what CI relies on.
+    for _candidate in (".env.local", ".env"):
+        load_dotenv(_candidate, override=False)
 except ImportError:
     pass
 
@@ -42,6 +46,13 @@ class Settings:
     groq_api_key: str = field(default_factory=lambda: _env("GROQ_API_KEY"))
     groq_model: str = field(
         default_factory=lambda: _env("GROQ_MODEL", "llama-3.3-70b-versatile")
+    )
+    # The agents only decide what runs and report what happened, which a small
+    # model does fine. Keeping them off the summariser's model matters on the
+    # free tier, where each model carries its own tokens-per-day allowance:
+    # orchestration chatter would otherwise eat the budget the briefing needs.
+    crew_agent_model: str = field(
+        default_factory=lambda: _env("CREW_AGENT_MODEL", "llama-3.1-8b-instant")
     )
     serper_api_key: str = field(default_factory=lambda: _env("SERPER_API_KEY"))
     slack_webhook_url: str = field(default_factory=lambda: _env("SLACK_WEBHOOK_URL"))

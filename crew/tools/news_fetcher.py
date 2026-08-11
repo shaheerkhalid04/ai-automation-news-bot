@@ -19,6 +19,7 @@ from typing import Any
 
 from crewai.tools import tool
 
+from crew import state
 from crew.settings import settings
 
 _USER_AGENT = "Dispatch/1.0 (+newsdesk automation)"
@@ -167,15 +168,39 @@ def _useful_snippet(snippet: str, headline: str) -> str:
     return snippet
 
 
-@tool("News Fetcher Tool")
-def news_fetcher_tool(topics: str, per_topic: int = 6) -> str:
-    """Fetch today's trending articles for a comma-separated list of topics.
+# How many articles the crew pulls per beat. Deliberately not a tool argument:
+# models emit numbers as strings ("3") often enough that Groq's strict tool
+# schema validation rejects the call outright, and a fixed depth costs the crew
+# nothing it actually needs to decide.
+_CREW_PER_TOPIC = 3
 
-    Returns a JSON array where each entry has id, headline, url, source,
-    published_at, snippet and topic. Use this before any summarising.
+
+@tool("News Fetcher Tool")
+def news_fetcher_tool(topics: str) -> str:
+    """Fetch today's trending articles for a comma-separated list of beats.
+
+    Pass the beats as one comma-separated string, for example
+    "artificial intelligence, finance". The articles are held for the
+    summariser, so you do not need to copy them anywhere. Returns a short
+    receipt listing what was found.
     """
     parsed = [topic.strip() for topic in topics.split(",") if topic.strip()]
     if not parsed:
         parsed = settings.topics
-    articles = fetch_news(parsed, per_topic=per_topic)
-    return json.dumps(articles, indent=2)
+
+    articles = fetch_news(parsed, per_topic=_CREW_PER_TOPIC)
+    state.set_articles(articles)
+
+    if not articles:
+        return "No articles found. The search backend returned nothing for these beats."
+
+    # Headlines only: enough for the desk to reason about coverage, without
+    # putting URLs and snippets through the context window.
+    listing = "\n".join(
+        f"{index}. [{article['topic']}] {article['headline']} ({article['source']})"
+        for index, article in enumerate(articles, start=1)
+    )
+    return (
+        f"Fetched {len(articles)} articles across {len(parsed)} beats via "
+        f"{settings.search_backend}, held for the summariser.\n{listing}"
+    )
