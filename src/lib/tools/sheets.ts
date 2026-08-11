@@ -140,6 +140,34 @@ export async function logToSheets(stories: Story[], runId: string): Promise<Chan
 }
 
 /**
+ * Headline fingerprints already in the sheet. Two runners share this archive
+ * (Vercel cron and the GitHub Actions crew), so whichever fires second uses
+ * this to avoid posting a story the other already filed.
+ */
+export async function loggedFingerprints(): Promise<Set<string>> {
+  if (!config.sheetsEnabled) return new Set();
+
+  try {
+    const token = await accessToken();
+    const range = encodeURIComponent(`${config.sheetsTab}!E2:E`);
+    const body = await call<{ values?: string[][] }>("GET", `/values/${range}`, token);
+    return new Set(
+      (body.values ?? [])
+        .map((row) => fingerprint(row[0] ?? ""))
+        .filter(Boolean),
+    );
+  } catch (error) {
+    // A read failure must not block publishing; worst case we repost a story.
+    console.error("[sheets] fingerprint read failed:", error);
+    return new Set();
+  }
+}
+
+export function fingerprint(headline: string): string {
+  return headline.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 80);
+}
+
+/**
  * Read the digest back out of the sheet. The spreadsheet is the datastore, so
  * the dashboard and the crew never disagree about what was published.
  */

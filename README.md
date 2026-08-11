@@ -87,13 +87,22 @@ rather than raising, so a half-configured deployment still produces a briefing.
 
 ## Automation
 
-Vercel Cron drives the edge runner from `vercel.json`. The GitHub Actions
-workflow in `.github/workflows/briefing.yml` drives the full agent crew on the
-same six-hour cadence, and can be triggered by hand from the Actions tab.
+Two schedules, deliberately:
 
-> Vercel's Hobby plan only fires cron once per day regardless of the expression.
-> The GitHub Actions schedule is the one that honours every six hours on a free
-> account.
+| Schedule | Cadence | Drives |
+|---|---|---|
+| `vercel.json` cron | Daily, 07:00 UTC | Edge runner |
+| `.github/workflows/briefing.yml` | Every 6 hours | Agent crew |
+
+Vercel's Hobby plan rejects any cron expression that fires more than once a
+day, so the six-hourly cadence the brief calls for lives in GitHub Actions,
+which has no such limit. The workflow can also be run by hand from the Actions
+tab.
+
+Because both schedules publish to the same channel, the pipeline fingerprints
+every headline against column E of the spreadsheet before summarising. A story
+already in the archive is dropped, so an overlapping run posts nothing and
+costs no tokens rather than duplicating the briefing.
 
 ## Layout
 

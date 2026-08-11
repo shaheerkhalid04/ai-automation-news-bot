@@ -126,6 +126,7 @@ export function StatusPanel({
                 </div>
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-[--foreground-subtle]">
                   <span>{run.fetched} found</span>
+                  {run.skipped > 0 && <span>{run.skipped} known</span>}
                   <span className="text-[--foreground-muted]">{run.published} filed</span>
                   <span className={run.slack.ok ? "text-[--accent]" : "text-[--warning]"}>
                     slack {run.slack.ok ? "ok" : "skipped"}

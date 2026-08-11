@@ -8,6 +8,7 @@ account, which must be granted Editor access on the target spreadsheet.
 from __future__ import annotations
 
 import json
+import re
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
@@ -113,6 +114,34 @@ def log_rows(items: list[dict[str, Any]], run_id: str = "") -> dict[str, Any]:
         return {"logged": len(rows), "tab": settings.sheets_tab}
     except Exception as exc:
         return {"logged": 0, "reason": str(exc)}
+
+
+def logged_fingerprints() -> set[str]:
+    """Headline fingerprints already in the sheet.
+
+    Two runners share this archive (the Vercel cron and this crew), so
+    whichever fires second uses these to avoid refiling a published story.
+    """
+    if not settings.sheets_enabled:
+        return set()
+
+    try:
+        token = _access_token()
+        target = urllib.parse.quote(f"{settings.sheets_tab}!E2:E")
+        body = _call("GET", f"/values/{target}", token)
+        return {
+            fingerprint(row[0])
+            for row in body.get("values", [])
+            if row and row[0]
+        }
+    except Exception as exc:
+        # A read failure must not block publishing; worst case we repost.
+        print(f"[sheets_logger] fingerprint read failed: {exc}")
+        return set()
+
+
+def fingerprint(headline: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", headline.lower())[:80]
 
 
 @tool("Sheets Logger Tool")

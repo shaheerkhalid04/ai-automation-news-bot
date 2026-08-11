@@ -15,7 +15,14 @@ import uuid
 from datetime import datetime, timezone
 
 from crew.settings import settings
-from crew.tools import fetch_news, log_rows, publish, summarise
+from crew.tools import (
+    fetch_news,
+    fingerprint,
+    log_rows,
+    logged_fingerprints,
+    publish,
+    summarise,
+)
 
 
 def _run_id() -> str:
@@ -30,7 +37,17 @@ def run_direct(per_topic: int = 6) -> dict:
     articles = fetch_news(settings.topics, per_topic=per_topic)
     print(f"[dispatch] fetched {len(articles)} articles via {settings.search_backend}")
 
-    items = summarise(articles)
+    # Drop anything the archive already holds before spending tokens on it.
+    already_filed = logged_fingerprints()
+    fresh = [
+        article
+        for article in articles
+        if fingerprint(article["headline"]) not in already_filed
+    ]
+    if len(fresh) < len(articles):
+        print(f"[dispatch] skipped {len(articles) - len(fresh)} already in the archive")
+
+    items = summarise(fresh)
     # Rank so the briefing leads with what matters.
     order = {"high": 0, "medium": 1, "low": 2}
     items.sort(key=lambda item: order.get(item.get("impact", "medium"), 1))

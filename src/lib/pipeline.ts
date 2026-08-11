@@ -3,8 +3,8 @@ import { config } from "./config";
 import { fetchNews } from "./tools/news-fetcher";
 import { summarise } from "./tools/summarizer";
 import { publishToSlack } from "./tools/slack";
-import { logToSheets } from "./tools/sheets";
-import type { RunResult, Story } from "./types";
+import { fingerprint, loggedFingerprints, logToSheets } from "./tools/sheets";
+import type { Article, RunResult, Story } from "./types";
 
 const IMPACT_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 };
 
@@ -40,7 +40,14 @@ export async function runPipeline(perTopic = 6): Promise<RunResult> {
   const startedAt = new Date(started).toISOString();
 
   const articles = await fetchNews(config.topics, perTopic);
-  const summarised = await summarise(articles);
+
+  // Drop anything the archive already holds before spending tokens on it.
+  const alreadyFiled = await loggedFingerprints();
+  const fresh: Article[] = articles.filter(
+    (article) => !alreadyFiled.has(fingerprint(article.headline)),
+  );
+
+  const summarised = await summarise(fresh);
   const stories = rank(summarised);
 
   const [slack, sheets] = await Promise.all([
@@ -56,6 +63,7 @@ export async function runPipeline(perTopic = 6): Promise<RunResult> {
     durationMs: finished - started,
     searchBackend: config.searchBackend,
     fetched: articles.length,
+    skipped: articles.length - fresh.length,
     published: stories.length,
     slack,
     sheets,

@@ -28,6 +28,8 @@ export interface RunResult {
   durationMs: number;
   searchBackend: string;
   fetched: number;
+  /** Articles dropped because the archive already held them. */
+  skipped: number;
   published: number;
   slack: ChannelResult;
   sheets: ChannelResult;
