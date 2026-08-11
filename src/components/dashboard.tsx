@@ -79,13 +79,22 @@ export function Dashboard() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "the run failed");
 
-      const parts = [`${result.published} stories filed`];
-      parts.push(result.slack.ok ? "Slack delivered" : `Slack ${result.slack.detail}`);
-      parts.push(result.sheets.ok ? "Sheets logged" : `Sheets ${result.sheets.detail}`);
-      setNotice({
-        tone: result.slack.ok && result.sheets.ok ? "ok" : "warn",
-        text: parts.join(" · "),
-      });
+      // Nothing new is a healthy outcome, not a failure: the archive already
+      // held every story on the wire, so both channels correctly stayed quiet.
+      if (result.published === 0 && result.skipped > 0) {
+        setNotice({
+          tone: "ok",
+          text: `Nothing new on the wire · all ${result.skipped} stories were already filed`,
+        });
+      } else {
+        const parts = [`${result.published} stories filed`];
+        parts.push(result.slack.ok ? "Slack delivered" : `Slack ${result.slack.detail}`);
+        parts.push(result.sheets.ok ? "Sheets logged" : `Sheets ${result.sheets.detail}`);
+        setNotice({
+          tone: result.slack.ok && result.sheets.ok ? "ok" : "warn",
+          text: parts.join(" · "),
+        });
+      }
       await load();
     } catch (error) {
       setNotice({

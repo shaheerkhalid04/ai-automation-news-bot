@@ -56,7 +56,22 @@ function normaliseImpact(value: string | undefined): Impact {
   return lowered === "high" || lowered === "low" ? lowered : "medium";
 }
 
-async function callGroq(articles: Article[]): Promise<Map<string, Enriched>> {
+/** Articles per request. Keeps each call well inside the free-tier budget. */
+const BATCH_SIZE = 10;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Groq counts max_tokens against the tokens-per-minute allowance as *requested*
+ * tokens, so an oversized ceiling gets the whole call rejected with a 429 even
+ * when the reply would have been short. Reserve only what a batch can plausibly
+ * produce: roughly 60 tokens of JSON per story, plus a little slack.
+ */
+function tokenCeiling(count: number): number {
+  return Math.min(4000, count * 110 + 400);
+}
+
+async function callBatch(articles: Article[], attempt = 0): Promise<Enriched[]> {
   const response = await fetch(ENDPOINT, {
     method: "POST",
     headers: {
@@ -66,9 +81,7 @@ async function callGroq(articles: Article[]): Promise<Map<string, Enriched>> {
     body: JSON.stringify({
       model: config.groqModel,
       temperature: 0.2,
-      // Enough headroom for a full briefing; the default truncates the array
-      // partway through and silently costs us stories.
-      max_tokens: 8000,
+      max_tokens: tokenCeiling(articles.length),
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: SYSTEM },
@@ -87,6 +100,19 @@ async function callGroq(articles: Article[]): Promise<Map<string, Enriched>> {
     }),
   });
 
+  if (response.status === 429 && attempt < 2) {
+    const detail = await response.text();
+    // The error body tells us how long to wait; honour it rather than guessing.
+    const suggested = Number(detail.match(/try again in ([\d.]+)s/)?.[1]);
+    const waitMs = Math.min(
+      20_000,
+      Number.isFinite(suggested) ? suggested * 1000 + 500 : 6000,
+    );
+    console.warn(`[summarizer] rate limited, retrying in ${Math.round(waitMs / 100) / 10}s`);
+    await sleep(waitMs);
+    return callBatch(articles, attempt + 1);
+  }
+
   if (!response.ok) {
     throw new Error(`Groq responded ${response.status}: ${await response.text()}`);
   }
@@ -94,13 +120,44 @@ async function callGroq(articles: Article[]): Promise<Map<string, Enriched>> {
   const body = (await response.json()) as {
     choices: Array<{ message: { content: string } }>;
   };
-  const parsed = extractJson(body.choices[0].message.content);
+  return extractJson(body.choices[0].message.content).items ?? [];
+}
 
-  const map = new Map<string, Enriched>();
-  for (const item of parsed.items ?? []) {
-    if (item?.id) map.set(item.id, item);
+interface EditorPass {
+  /** Entries the editor wrote, by article id. */
+  enriched: Map<string, Enriched>;
+  /**
+   * Ids the editor actually got to look at. An id here but absent from
+   * `enriched` was deliberately dropped as a duplicate; an id missing from
+   * both belongs to a batch that errored and still deserves a fallback.
+   */
+  covered: Set<string>;
+}
+
+/**
+ * Summarise in sequential batches. Sequential rather than parallel because the
+ * free tier's limit is per minute across the whole org, so firing every batch
+ * at once just guarantees the later ones are rejected.
+ */
+async function callGroq(articles: Article[]): Promise<EditorPass> {
+  const enriched = new Map<string, Enriched>();
+  const covered = new Set<string>();
+
+  for (let start = 0; start < articles.length; start += BATCH_SIZE) {
+    const batch = articles.slice(start, start + BATCH_SIZE);
+    try {
+      const items = await callBatch(batch);
+      for (const article of batch) covered.add(article.id);
+      for (const item of items) {
+        if (item?.id) enriched.set(item.id, item);
+      }
+    } catch (error) {
+      // One failed batch must not cost us the batches that did succeed.
+      console.error(`[summarizer] batch at ${start} failed:`, error);
+    }
   }
-  return map;
+
+  return { enriched, covered };
 }
 
 /**
@@ -114,34 +171,33 @@ async function callGroq(articles: Article[]): Promise<Map<string, Enriched>> {
 export async function summarise(articles: Article[]): Promise<Story[]> {
   if (articles.length === 0) return [];
 
-  let enriched = new Map<string, Enriched>();
+  let pass: EditorPass = { enriched: new Map(), covered: new Set() };
   if (config.llmEnabled) {
-    try {
-      enriched = await callGroq(articles);
-    } catch (error) {
-      console.error("[summarizer] Groq call failed, using snippets:", error);
-    }
+    pass = await callGroq(articles);
   }
 
-  if (enriched.size === 0) {
-    return articles.map((article) => ({
-      ...article,
-      summary: fallbackSummary(article),
-      category: "Other",
-      impact: "medium" as const,
-    }));
-  }
+  const fallback = (article: Article): Story => ({
+    ...article,
+    summary: fallbackSummary(article),
+    category: "Other",
+    impact: "medium",
+  });
 
   return articles.flatMap((article) => {
-    const detail = enriched.get(article.id);
-    if (!detail) return [];
-    return [
-      {
-        ...article,
-        summary: detail.summary?.trim() || fallbackSummary(article),
-        category: detail.category || "Other",
-        impact: normaliseImpact(detail.impact),
-      },
-    ];
+    const detail = pass.enriched.get(article.id);
+    if (detail) {
+      return [
+        {
+          ...article,
+          summary: detail.summary?.trim() || fallbackSummary(article),
+          category: detail.category || "Other",
+          impact: normaliseImpact(detail.impact),
+        },
+      ];
+    }
+    // The editor saw it and said no: that is an editorial decision, honour it.
+    if (pass.covered.has(article.id)) return [];
+    // Nobody looked at it, so keep it rather than lose it to an outage.
+    return [fallback(article)];
   });
 }
