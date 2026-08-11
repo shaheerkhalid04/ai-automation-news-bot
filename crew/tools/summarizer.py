@@ -20,15 +20,23 @@ _ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
 _TIMEOUT = 60
 
 _SYSTEM = """You are the desk editor for a newsroom briefing.
-For each article you receive, write one tight summary of 30-45 words that says
-what actually happened and why a reader should care. No preamble, no hedging,
-no repeating the headline verbatim.
+For each article, write one tight summary of 20-40 words saying what happened
+and why a reader should care. No preamble, no hedging, and never just restate
+the headline.
+
+You will often have only a headline and a publisher, with no article body. When
+that is all you have, explain what the headline means and why it matters to
+someone following this beat. Never invent specifics you were not given: no
+numbers, dates, names or quotes that are not in the input.
 
 Also assign:
 - "category": one of AI, Tech, Finance, Crypto, Policy, Science, Other
 - "impact": one of high, medium, low
 
-Drop any article that duplicates a story already in your output.
+Keep every article unless it covers the same event as one you have already
+written up, in which case keep only the stronger one. Return one entry for
+every article you keep, reusing the id you were given.
+
 Respond with JSON only, shaped as:
 {"items":[{"id":"<the id you were given>","summary":"...","category":"...","impact":"..."}]}"""
 
@@ -52,6 +60,9 @@ def _call_groq(articles: list[dict[str, Any]]) -> dict[str, Any]:
     payload = {
         "model": settings.groq_model,
         "temperature": 0.2,
+        # Enough headroom for a full briefing; the default truncates the array
+        # partway through and silently costs us stories.
+        "max_tokens": 8000,
         "response_format": {"type": "json_object"},
         "messages": [
             {"role": "system", "content": _SYSTEM},
@@ -92,7 +103,13 @@ def _fallback(article: dict[str, Any]) -> dict[str, Any]:
 
 
 def summarise(articles: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Attach summary, category and impact to each article."""
+    """Attach summary, category and impact to each article.
+
+    When the editor returns entries, its omissions are decisions: an article it
+    left out was a duplicate, so it is dropped rather than back-filled with its
+    own headline. Only when the editor produced nothing at all does every
+    article fall through to its snippet.
+    """
     if not articles:
         return []
 
@@ -106,13 +123,19 @@ def summarise(articles: list[dict[str, Any]]) -> list[dict[str, Any]]:
         except Exception as exc:
             print(f"[summarizer] Groq call failed, using snippets: {exc}")
 
+    if not enriched:
+        return [{**article, **_fallback(article)} for article in articles]
+
     output = []
     for article in articles:
-        detail = enriched.get(article["id"]) or _fallback(article)
+        detail = enriched.get(article["id"])
+        if not detail:
+            continue
         output.append(
             {
                 **article,
-                "summary": (detail.get("summary") or "").strip() or _fallback(article)["summary"],
+                "summary": (detail.get("summary") or "").strip()
+                or _fallback(article)["summary"],
                 "category": detail.get("category") or "Other",
                 "impact": (detail.get("impact") or "medium").lower(),
             }

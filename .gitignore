@@ -58,3 +58,9 @@ db/
 
 .vercel
 .env*
+
+# service account keys, never commit
+gen-lang-client-*.json
+*-service-account*.json
+service-account*.json
+credentials*.json
