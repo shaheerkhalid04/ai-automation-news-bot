@@ -19,7 +19,8 @@ export function getRecentRuns(): RunResult[] {
 }
 
 function runId(): string {
-  const stamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 15);
+  // 14 characters is exactly yyyymmddhhmmss; 15 keeps the milliseconds dot.
+  const stamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
   return `${stamp}-${randomUUID().slice(0, 6)}`;
 }
 

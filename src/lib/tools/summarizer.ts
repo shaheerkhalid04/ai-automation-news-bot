@@ -26,8 +26,9 @@ Never introduce the consequence with a stock phrase. "This matters as it" and
 the consequence part of the sentence instead, and vary how you get there.
 
 Drop an entry, by omitting it, only when it is not an article at all: stock
-quote and ticker pages, index or price listings, directory pages, and pages
-carrying a company name with no event attached. A real but minor story is kept
+quote and ticker pages, index or price listings, directory pages, promotional
+or referral and discount code posts, and pages carrying a company name with no
+event attached. A real but minor story is kept
 and rated "low", never dropped. Also drop an entry covering the same event as
 one you already wrote up, keeping the stronger one. Return one entry for every
 article you keep, reusing the id you were given.
