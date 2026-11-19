@@ -44,15 +44,17 @@ def _topics() -> list[str]:
 @dataclass(frozen=True)
 class Settings:
     groq_api_key: str = field(default_factory=lambda: _env("GROQ_API_KEY"))
+    # Groq retired llama-3.3-70b-versatile and llama-3.1-8b-instant on
+    # 16 Aug 2026, so both defaults are now gpt-oss models.
     groq_model: str = field(
-        default_factory=lambda: _env("GROQ_MODEL", "llama-3.3-70b-versatile")
+        default_factory=lambda: _env("GROQ_MODEL", "openai/gpt-oss-120b")
     )
     # The agents only decide what runs and report what happened, which a small
     # model does fine. Keeping them off the summariser's model matters on the
     # free tier, where each model carries its own tokens-per-day allowance:
     # orchestration chatter would otherwise eat the budget the briefing needs.
     crew_agent_model: str = field(
-        default_factory=lambda: _env("CREW_AGENT_MODEL", "llama-3.1-8b-instant")
+        default_factory=lambda: _env("CREW_AGENT_MODEL", "openai/gpt-oss-20b")
     )
     serper_api_key: str = field(default_factory=lambda: _env("SERPER_API_KEY"))
     slack_webhook_url: str = field(default_factory=lambda: _env("SLACK_WEBHOOK_URL"))
@@ -86,6 +88,15 @@ class Settings:
     @property
     def llm_enabled(self) -> bool:
         return bool(self.groq_api_key)
+
+
+def is_reasoning_model(model: str) -> bool:
+    """gpt-oss models reason before answering, and that counts against max_tokens."""
+    return model.startswith("openai/gpt-oss")
+
+
+# Tokens a reasoning model may spend thinking, on top of the reply itself.
+REASONING_HEADROOM = 512
 
 
 settings = Settings()

@@ -68,8 +68,8 @@ rather than raising, so a half-configured deployment still produces a briefing.
 | Variable | Needed for | Notes |
 |---|---|---|
 | `GROQ_API_KEY` | Real summaries | Without it the desk falls back to raw snippets |
-| `GROQ_MODEL` | Summarising | Defaults to `llama-3.3-70b-versatile` |
-| `CREW_AGENT_MODEL` | Agent reasoning | Defaults to `llama-3.1-8b-instant`, see below |
+| `GROQ_MODEL` | Summarising | Defaults to `openai/gpt-oss-120b` |
+| `CREW_AGENT_MODEL` | Agent reasoning | Defaults to `openai/gpt-oss-20b`, see below |
 | `SERPER_API_KEY` | Richer search | Optional. Empty means the keyless Google News RSS backend |
 | `SLACK_WEBHOOK_URL` | Slack delivery | Or `SLACK_BOT_TOKEN` + `SLACK_CHANNEL` |
 | `GOOGLE_SHEETS_ID` | Archiving | The id from the spreadsheet URL |
@@ -77,7 +77,14 @@ rather than raising, so a half-configured deployment still produces a briefing.
 | `GOOGLE_PRIVATE_KEY` | Archiving | Keep the `\n` escapes intact |
 | `NEWS_TOPICS` | Beats | Comma separated. Defaults to AI, tech, finance, crypto |
 | `MAX_ARTICLES` | Briefing size | Defaults to 12 |
-| `CRON_SECRET` | Locking `/api/cron` | When set, the endpoint requires it |
+| `CRON_SECRET` | Any run over HTTP | Required. `/api/cron` and `/api/run` refuse every call without it |
+
+Groq retired `llama-3.3-70b-versatile` and `llama-3.1-8b-instant` on 16 Aug
+2026. Both defaults are now gpt-oss models. They reason before answering and
+that reasoning counts against `max_tokens`, so every call asks for low
+reasoning effort and the summariser adds a little headroom to its ceiling. If
+a GitHub Actions variable or a Vercel env var still names a retired model,
+replace it, because a set value wins over the default.
 
 ## Living inside the Groq free tier
 
@@ -86,7 +93,7 @@ Three design decisions fall out of that, and they are the reason the crew runs
 at all rather than dying on a 429:
 
 - **The agents and the summariser use different models.** Orchestration chatter
-  on `llama-3.1-8b-instant` leaves the whole daily allowance of the larger model
+  on the smaller agent model leaves the whole daily allowance of the larger model
   for the briefing itself.
 - **Articles never travel through the agents.** Tools hand data to each other
   through a shared run buffer (`crew/state.py`) and return a short receipt, so
@@ -105,9 +112,12 @@ no `properties`.
 
 | Route | Method | Purpose |
 |---|---|---|
-| `/api/cron` | GET | Scheduled entrypoint, guarded by `CRON_SECRET` |
-| `/api/run` | POST | Manual trigger from the dashboard |
+| `/api/cron` | GET | Scheduled entrypoint, needs `CRON_SECRET` |
+| `/api/run` | POST | Manual trigger from the dashboard, needs `Authorization: Bearer <CRON_SECRET>` |
 | `/api/digests` | GET | Feed for the dashboard, read from Sheets |
+| `/api/health` | GET | Liveness. `?verify=1` makes one real call to the model and returns `ok`, `model`, `latency_ms` |
+
+Run the Python checks with `python -m pytest -q tests` (CrewAI and Groq are faked).
 
 ## Automation
 

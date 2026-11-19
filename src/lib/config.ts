@@ -16,7 +16,8 @@ export const config = {
     return env("GROQ_API_KEY");
   },
   get groqModel() {
-    return env("GROQ_MODEL", "llama-3.3-70b-versatile");
+    // Groq retired llama-3.3-70b-versatile on 16 Aug 2026.
+    return env("GROQ_MODEL", "openai/gpt-oss-120b");
   },
   get serperApiKey() {
     return env("SERPER_API_KEY");
