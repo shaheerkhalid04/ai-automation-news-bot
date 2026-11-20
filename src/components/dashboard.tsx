@@ -46,11 +46,24 @@ function SkeletonCard() {
   );
 }
 
+const TOKEN_KEY = "dispatch-run-token";
+
+function readToken(): string {
+  try {
+    return localStorage.getItem(TOKEN_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
 export function Dashboard() {
   const [data, setData] = useState<FeedPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [notice, setNotice] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
+  // Runs need the CRON_SECRET; the owner pastes it once and it stays in this browser.
+  const [askToken, setAskToken] = useState(false);
+  const [tokenDraft, setTokenDraft] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -75,8 +88,16 @@ export function Dashboard() {
     setRunning(true);
     setNotice(null);
     try {
-      const response = await fetch("/api/run", { method: "POST" });
+      const token = readToken();
+      const response = await fetch("/api/run", {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       const result = await response.json();
+      if (response.status === 401) {
+        setAskToken(true);
+        throw new Error(token ? "That run token was refused" : "Runs need the owner's run token");
+      }
       if (!response.ok) throw new Error(result.error ?? "the run failed");
 
       // Nothing new is a healthy outcome, not a failure: the archive already
@@ -148,6 +169,42 @@ export function Dashboard() {
           </button>
         </div>
       </header>
+
+      {askToken && (
+        <form
+          className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-[--border] bg-[--surface]/60 px-3 py-2 text-[12.5px]"
+          onSubmit={(event) => {
+            event.preventDefault();
+            try {
+              localStorage.setItem(TOKEN_KEY, tokenDraft.trim());
+            } catch {
+              // Storage blocked: the token simply is not remembered.
+            }
+            setAskToken(false);
+            setTokenDraft("");
+            void trigger();
+          }}
+        >
+          <label htmlFor="run-token" className="text-[--foreground-muted]">
+            Run token
+          </label>
+          <input
+            id="run-token"
+            type="password"
+            autoComplete="off"
+            value={tokenDraft}
+            onChange={(event) => setTokenDraft(event.target.value)}
+            placeholder="CRON_SECRET"
+            className="min-w-0 flex-1 rounded-md border border-[--border-strong] bg-transparent px-2.5 py-1.5 text-[--foreground]"
+          />
+          <button
+            type="submit"
+            className="cursor-pointer rounded-md border border-[--border-strong] px-3 py-1.5 text-[--foreground]"
+          >
+            Save and run
+          </button>
+        </form>
+      )}
 
       {notice && (
         <div

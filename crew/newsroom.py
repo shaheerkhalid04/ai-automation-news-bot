@@ -5,7 +5,7 @@ from __future__ import annotations
 from crewai import Agent, Crew, LLM, Process, Task
 from crewai.project import CrewBase, agent, crew, task
 
-from crew.settings import settings
+from crew.settings import is_reasoning_model, settings
 from crew.tools import (
     news_fetcher_tool,
     sheets_logger_tool,
@@ -23,13 +23,16 @@ def build_llm() -> LLM:
     outright with an invalid_request_error. Groq's OpenAI-compatible endpoint
     takes the native provider instead, which strips the marker correctly.
 
-    Low temperature keeps the desk factual.
+    Low temperature keeps the desk factual. The agents only route work, so a
+    gpt-oss agent model is asked for low reasoning effort.
     """
+    extra = {"reasoning_effort": "low"} if is_reasoning_model(settings.crew_agent_model) else {}
     return LLM(
         model=f"openai/{settings.crew_agent_model}",
         base_url="https://api.groq.com/openai/v1",
         api_key=settings.groq_api_key,
         temperature=0.2,
+        **extra,
     )
 
 

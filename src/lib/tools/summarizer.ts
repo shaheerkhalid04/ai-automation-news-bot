@@ -1,4 +1,5 @@
 import { config } from "../config";
+import { REASONING_HEADROOM, reasoningParams } from "../groq";
 import type { Article, Impact, Story } from "../types";
 
 const ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
@@ -80,7 +81,9 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  * produce: roughly 60 tokens of JSON per story, plus a little slack.
  */
 function tokenCeiling(count: number): number {
-  return Math.min(4000, count * 110 + 400);
+  // A reasoning model spends part of max_tokens thinking before it answers.
+  const headroom = reasoningParams(config.groqModel).reasoning_effort ? REASONING_HEADROOM : 0;
+  return Math.min(4000, count * 110 + 400) + headroom;
 }
 
 async function callBatch(articles: Article[], attempt = 0): Promise<Enriched[]> {
@@ -94,6 +97,7 @@ async function callBatch(articles: Article[], attempt = 0): Promise<Enriched[]> 
       model: config.groqModel,
       temperature: 0.2,
       max_tokens: tokenCeiling(articles.length),
+      ...reasoningParams(config.groqModel),
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: SYSTEM },

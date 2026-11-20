@@ -18,7 +18,7 @@ from typing import Any
 from crewai.tools import tool
 
 from crew import state
-from crew.settings import settings
+from crew.settings import REASONING_HEADROOM, is_reasoning_model, settings
 
 _ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
 _TIMEOUT = 60
@@ -79,8 +79,10 @@ def _token_ceiling(count: int) -> int:
 
     Groq counts max_tokens against the tokens-per-minute allowance as
     *requested* tokens, so an oversized ceiling gets the whole call rejected.
+    A reasoning model also spends part of the ceiling thinking first.
     """
-    return min(4000, count * 110 + 400)
+    headroom = REASONING_HEADROOM if is_reasoning_model(settings.groq_model) else 0
+    return min(4000, count * 110 + 400) + headroom
 
 
 def _call_batch(articles: list[dict[str, Any]], attempt: int = 0) -> list[dict[str, Any]]:
@@ -88,6 +90,7 @@ def _call_batch(articles: list[dict[str, Any]], attempt: int = 0) -> list[dict[s
         "model": settings.groq_model,
         "temperature": 0.2,
         "max_tokens": _token_ceiling(len(articles)),
+        **({"reasoning_effort": "low"} if is_reasoning_model(settings.groq_model) else {}),
         "response_format": {"type": "json_object"},
         "messages": [
             {"role": "system", "content": _SYSTEM},
